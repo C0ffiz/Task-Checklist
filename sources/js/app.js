@@ -1,5 +1,7 @@
 // --- sources/js/app.js ---
 
+import { LocalNotifications } from '@capacitor/local-notifications';
+
 // --- Configuration ---
 // Array of background div IDs (must match IDs in sources/index.html)
 const dailyBackgroundImageIds = [
@@ -115,7 +117,8 @@ let checklistData = {
     manuallyHiddenSections: {},
     lastEightHourResets: {},
     notificationPreferences: {},
-    notificationsSent: {}
+    notificationsSent: {},
+    taskOrder: { daily: [], weekly: [], other: [] }
 };
 let currentTheme = 'dark';
 let saveStatusTimeout;
@@ -568,32 +571,55 @@ function saveData(showStatus = true) {
         displayError(userMessage);
     }
 }
+
 async function requestNotificationPermission() {
-    if (!("Notification" in window)) {
-        console.warn("This browser does not support desktop notification");
-        alert("This browser does not support desktop notifications.");
-        return false;
-    }
-    if (Notification.permission === "granted") {
-        return true;
-    }
-    if (Notification.permission !== "denied") {
-        const permission = await Notification.requestPermission();
-        if (permission === "granted") {
+    try {
+        const permissionStatus = await LocalNotifications.checkPermissions();
+        
+        if (permissionStatus.display === 'granted') {
             return true;
+        }
+        
+        if (permissionStatus.display === 'prompt' || permissionStatus.display === 'prompt-with-rationale') {
+            const result = await LocalNotifications.requestPermissions();
+            if (result.display === 'granted') {
+                return true;
+            } else {
+                alert("Notification permission was denied. You can enable it in your device settings.");
+                return false;
+            }
         } else {
-            alert("Notification permission was denied. You can enable it in your browser settings.");
+            alert("Notification permission has been denied. Please enable it in your device settings.");
             return false;
         }
-    } else {
-        alert("Notification permission has been denied. Please enable it in your browser settings if you wish to receive notifications.");
+    } catch (error) {
+        console.error("Error requesting notification permission:", error);
+        alert("Could not request notification permissions.");
         return false;
     }
 }
 
-function showNotification(title, body) {
-    if (Notification.permission === "granted") {
-        new Notification(title, { body: body, silent: true });
+async function showNotification(title, body) {
+    try {
+        const hasPermission = await requestNotificationPermission();
+        if (!hasPermission) return;
+        
+        await LocalNotifications.schedule({
+            notifications: [
+                {
+                    title: title,
+                    body: body,
+                    id: Math.floor(Math.random() * 100000),
+                    schedule: { at: new Date(Date.now() + 1000) },
+                    sound: undefined,
+                    attachments: undefined,
+                    actionTypeId: "",
+                    extra: null
+                }
+            ]
+        });
+    } catch (error) {
+        console.error("Error showing notification:", error);
     }
 }
 
@@ -774,6 +800,14 @@ function createChecklistItem(task, isChecked, isSubtask = false) {
             checkbox.dispatchEvent(new Event('change'));
         });
     }
+    
+    // Make item draggable (but not subtasks inside parent tasks)
+    if (!isSubtask) {
+        const category = task.id.startsWith('daily_') ? 'daily' :
+                        task.id.startsWith('weekly_') ? 'weekly' : 'other';
+        makeDraggable(listItem, task.id, category);
+    }
+    
     return listItem;
 }
 function populateSection(sectionElement, taskList, progress) {
@@ -781,12 +815,30 @@ function populateSection(sectionElement, taskList, progress) {
         console.error("Section element not found for population:", sectionElement);
         return;
     }
+    
+    // Determine category from section element
+    const category = sectionElement.id.includes('daily') ? 'daily' :
+                    sectionElement.id.includes('weekly') ? 'weekly' : 'other';
+    
+    // Sort tasks based on saved order
+    let orderedTasks = [...taskList];
+    if (checklistData.taskOrder[category] && checklistData.taskOrder[category].length > 0) {
+        orderedTasks.sort((a, b) => {
+            const aIndex = checklistData.taskOrder[category].indexOf(a.id);
+            const bIndex = checklistData.taskOrder[category].indexOf(b.id);
+            if (aIndex === -1) return 1;
+            if (bIndex === -1) return -1;
+            return aIndex - bIndex;
+        });
+    }
+    
     sectionElement.innerHTML = '';
-    taskList.forEach(task => {
+    orderedTasks.forEach(task => {
         const isChecked = progress[task.id] || false;
         const listItem = createChecklistItem(task, isChecked);
         sectionElement.appendChild(listItem);
     });
+    
     if (sectionElement.parentElement && sectionElement.parentElement.id) {
          updateSectionControls(sectionElement.parentElement.id);
     }
@@ -967,6 +1019,92 @@ function updateSectionControls(sectionElementId) {
 }
 
 
+// --- Drag and Drop Functions ---
+function makeDraggable(listItem, taskId, category) {
+    listItem.setAttribute('draggable', 'true');
+    listItem.dataset.taskId = taskId;
+    listItem.dataset.category = category;
+    
+    listItem.addEventListener('dragstart', handleDragStart);
+    listItem.addEventListener('dragend', handleDragEnd);
+    listItem.addEventListener('dragover', handleDragOver);
+    listItem.addEventListener('drop', handleDrop);
+    listItem.addEventListener('dragenter', handleDragEnter);
+    listItem.addEventListener('dragleave', handleDragLeave);
+}
+
+let draggedElement = null;
+
+function handleDragStart(e) {
+    draggedElement = this;
+    this.style.opacity = '0.4';
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.innerHTML);
+}
+
+function handleDragEnd(e) {
+    this.style.opacity = '1';
+    document.querySelectorAll('.task-item').forEach(item => {
+        item.classList.remove('drag-over');
+    });
+}
+
+function handleDragOver(e) {
+    if (e.preventDefault) {
+        e.preventDefault();
+    }
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+
+function handleDragEnter(e) {
+    if (this !== draggedElement && this.dataset.category === draggedElement?.dataset.category) {
+        this.classList.add('drag-over');
+    }
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+    if (e.stopPropagation) {
+        e.stopPropagation();
+    }
+    
+    this.classList.remove('drag-over');
+    
+    if (draggedElement !== this && this.dataset.category === draggedElement?.dataset.category) {
+        const category = this.dataset.category;
+        const draggedId = draggedElement.dataset.taskId;
+        const targetId = this.dataset.taskId;
+        
+        // Update task order in data
+        const taskArray = category === 'daily' ? tasks.daily : 
+                         category === 'weekly' ? tasks.weekly : tasks.other;
+        
+        const draggedIndex = taskArray.findIndex(t => t.id === draggedId);
+        const targetIndex = taskArray.findIndex(t => t.id === targetId);
+        
+        if (draggedIndex !== -1 && targetIndex !== -1) {
+            const [movedTask] = taskArray.splice(draggedIndex, 1);
+            taskArray.splice(targetIndex, 0, movedTask);
+            
+            // Save order
+            checklistData.taskOrder[category] = taskArray.map(t => t.id);
+            saveData(false);
+            
+            // Re-render the section
+            const listElement = category === 'daily' ? dailyList :
+                               category === 'weekly' ? weeklyList : otherList;
+            populateSection(listElement, taskArray, checklistData.progress);
+        }
+    }
+    
+    return false;
+}
+
+
 function loadAndInitializeApp() {
     initializeDOMElements();
     hideError();
@@ -986,11 +1124,12 @@ function loadAndInitializeApp() {
                 checklistData.lastEightHourResets = parsedData.lastEightHourResets || {};
                 checklistData.notificationPreferences = parsedData.notificationPreferences || {};
                 checklistData.notificationsSent = parsedData.notificationsSent || {};
+                checklistData.taskOrder = parsedData.taskOrder || { daily: [], weekly: [], other: [] };
             } else { console.warn("Invalid data format found in localStorage. Starting fresh."); }
         } catch (e) {
             console.error("Error parsing saved data:", e);
             displayError("Failed to load saved progress. Data might be corrupted.");
-            checklistData = { progress: {}, lastSaved: null, lastDailyReset: null, lastWeeklyReset: null, hiddenTasks: {}, manuallyHiddenSections: {}, lastEightHourResets: {}, notificationPreferences: {}, notificationsSent: {} };
+            checklistData = { progress: {}, lastSaved: null, lastDailyReset: null, lastWeeklyReset: null, hiddenTasks: {}, manuallyHiddenSections: {}, lastEightHourResets: {}, notificationPreferences: {}, notificationsSent: {}, taskOrder: { daily: [], weekly: [], other: [] } };
         }
     }
 

@@ -30,6 +30,9 @@
     "url": "https://github.com/warframe-tools/Task-Checklist/issues"
   },
   "homepage": "https://warframetools.com/Task-Checklist/",
+  "dependencies": {
+    "@capacitor/local-notifications": "^6.0.0"
+  },
   "devDependencies": {
     "@capacitor/android": "^6.2.0",
     "@capacitor/cli": "^6.2.0",

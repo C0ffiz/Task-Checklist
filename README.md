@@ -52,6 +52,18 @@ APKs are automatically built via GitHub Actions:
 - **On every push to main:** APKs are uploaded as build artifacts
 - **On version tags (e.g., v2.4.0):** APKs are attached to GitHub Releases
 
+## ✨ New Features
+
+### Drag-and-Drop Task Reordering
+- Reorder tasks within each category by dragging and dropping
+- Your custom order is automatically saved
+- Works on both desktop and mobile devices
+
+### Android Notifications
+- Enable notifications for specific tasks (Baro Ki'Teer, 8-hour vendors)
+- Native Android notifications that work reliably
+- Manage notification permissions in your device settings
+
 ## Features
 
 * **Comprehensive Task Lists:** Includes common Daily, Weekly, and a new "Other Tasks" section.

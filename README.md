@@ -17,6 +17,41 @@ This tool provides checklists for common recurring activities in Warframe. It sa
 [![Conquering Productions](https://img.youtube.com/vi/fHOz21Zj0Yc/mqdefault.jpg)](https://www.youtube.com/watch?v=fHOz21Zj0Yc)
 **Conquering Productions**
 
+## 📱 Android App
+
+An Android version of the Warframe Task Checklist is now available! The app provides the same functionality as the web version but in a native Android application format.
+
+### Download
+
+You can download the latest APK from the [Releases page](https://github.com/warframe-tools/Task-Checklist/releases). Look for the `app-debug.apk` file attached to the latest release.
+
+### Local Development
+
+To build and test the Android app locally:
+
+```bash
+# Install dependencies
+npm install
+
+# Build web app
+npm run build
+
+# Add Android platform (first time only)
+npm run cap:add
+
+# Sync web app to Android
+npm run cap:sync
+
+# Open in Android Studio
+npm run cap:open
+```
+
+### Automated Builds
+
+APKs are automatically built via GitHub Actions:
+- **On every push to main:** APKs are uploaded as build artifacts
+- **On version tags (e.g., v2.4.0):** APKs are attached to GitHub Releases
+
 ## Features
 
 * **Comprehensive Task Lists:** Includes common Daily, Weekly, and a new "Other Tasks" section.

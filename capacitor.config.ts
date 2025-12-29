@@ -5,7 +5,13 @@ const config: CapacitorConfig = {
   appName: 'Warframe Tasks',
   webDir: 'pages',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    // Allow navigation to external URLs
+    allowNavigation: ['*']
+  },
+  android: {
+    // Enable web content debugging for testing
+    webContentsDebuggingEnabled: true
   }
 };
 

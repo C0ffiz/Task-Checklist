@@ -5,6 +5,11 @@
 # (You configured this as 'pages' one level up from 'sources', so at the project root)
 /pages/
 
+# Capacitor
+android/
+ios/
+.capacitor/
+
 # Log files
 *.log
 npm-debug.log*

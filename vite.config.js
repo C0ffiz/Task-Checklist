@@ -4,9 +4,10 @@ import { createHtmlPlugin } from 'vite-plugin-html'
 import fs from 'node:fs' 
 import path from 'node:path' 
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: 'sources',
-  base: '/Task-Checklist/',
+  // Use '/' for Capacitor builds, '/Task-Checklist/' for web/GitHub Pages
+  base: mode === 'capacitor' ? '/' : '/Task-Checklist/',
 
   plugins: [
     createHtmlPlugin({
@@ -25,4 +26,4 @@ export default defineConfig({
     outDir: '../pages', // Output to 'pages' at the project root
     emptyOutDir: true,
   },
-})
+}))

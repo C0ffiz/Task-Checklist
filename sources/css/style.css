@@ -130,6 +130,20 @@
     margin-left: 0.25rem;
 }
 
+/* --- Drag and Drop Styles --- */
+.task-item[draggable="true"] {
+    cursor: move;
+}
+
+.task-item.drag-over {
+    border-top: 2px solid #4f46e5;
+    padding-top: 8px;
+}
+
+.task-item[draggable="true"]:active {
+    cursor: grabbing;
+}
+
 
 /* --- Interactive Elements (Using Variables) --- */
 input[type="checkbox"] {

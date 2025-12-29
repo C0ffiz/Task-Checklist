@@ -12,6 +12,12 @@ const config: CapacitorConfig = {
   android: {
     // Enable web content debugging for testing
     webContentsDebuggingEnabled: true
+  },
+  plugins: {
+    LocalNotifications: {
+      smallIcon: "ic_stat_icon_config_sample",
+      iconColor: "#488AFF",
+    }
   }
 };
 

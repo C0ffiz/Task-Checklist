@@ -630,6 +630,20 @@ async function showNotification(title, body) {
     }
 }
 
+function createDragHandle() {
+    const dragHandle = document.createElement('div');
+    dragHandle.classList.add('drag-handle');
+    dragHandle.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    `;
+    dragHandle.setAttribute('aria-label', 'Drag to reorder');
+    return dragHandle;
+}
+
 function createChecklistItem(task, isChecked, isSubtask = false) {
     const listItem = document.createElement('li');
     listItem.classList.add('task-item');
@@ -696,6 +710,10 @@ function createChecklistItem(task, isChecked, isSubtask = false) {
         parentHeaderDiv.setAttribute('aria-expanded', 'true');
         parentHeaderDiv.setAttribute('aria-controls', `${task.id}-subtasks`);
 
+        // Add drag handle for parent tasks
+        const dragHandle = createDragHandle();
+
+        parentHeaderDiv.appendChild(dragHandle);
         parentHeaderDiv.appendChild(checkbox);
 
         const taskTextSpan = document.createElement('span');
@@ -762,6 +780,9 @@ function createChecklistItem(task, isChecked, isSubtask = false) {
          if (isSubtask) {
             listItem.classList.add('ml-4');
          }
+        
+        // Add drag handle
+        const dragHandle = createDragHandle();
 
         const label = document.createElement('label');
         label.htmlFor = task.id;
@@ -773,6 +794,7 @@ function createChecklistItem(task, isChecked, isSubtask = false) {
         label.classList.add('ml-2', 'flex-1', 'cursor-pointer');
         if (isChecked) { label.classList.add('checked'); }
 
+        listItem.appendChild(dragHandle);
         listItem.appendChild(checkbox);
         listItem.appendChild(label);
         listItem.appendChild(controlsContainer);
@@ -808,11 +830,15 @@ function createChecklistItem(task, isChecked, isSubtask = false) {
         });
     }
     
-    // Make item draggable (but not subtasks inside parent tasks)
-    if (!isSubtask) {
+    // Initialize touch drag (but not for subtasks)
+    if (!isSubtask && !task.isParent) {
         const category = task.id.startsWith('daily_') ? 'daily' :
                         task.id.startsWith('weekly_') ? 'weekly' : 'other';
-        makeDraggable(listItem, task.id, category);
+        initializeTouchDrag(listItem, task.id, category);
+    } else if (task.isParent) {
+        const category = task.id.startsWith('daily_') ? 'daily' :
+                        task.id.startsWith('weekly_') ? 'weekly' : 'other';
+        initializeTouchDrag(listItem, task.id, category);
     }
     
     return listItem;
@@ -1026,92 +1052,254 @@ function updateSectionControls(sectionElementId) {
 }
 
 
-// --- Drag and Drop Functions ---
-function makeDraggable(listItem, taskId, category) {
-    listItem.setAttribute('draggable', 'true');
+// --- Modern Touch-Friendly Drag and Drop System ---
+let touchDragState = {
+    isDragging: false,
+    draggedElement: null,
+    placeholder: null,
+    clone: null,
+    category: null,
+    startY: 0,
+    currentY: 0,
+    offsetY: 0,
+    scrollInterval: null
+};
+
+function initializeTouchDrag(listItem, taskId, category) {
+    const dragHandle = listItem.querySelector('.drag-handle');
+    if (!dragHandle) return;
+    
     listItem.dataset.taskId = taskId;
     listItem.dataset.category = category;
     
-    listItem.addEventListener('dragstart', handleDragStart);
-    listItem.addEventListener('dragend', handleDragEnd);
-    listItem.addEventListener('dragover', handleDragOver);
-    listItem.addEventListener('drop', handleDrop);
-    listItem.addEventListener('dragenter', handleDragEnter);
-    listItem.addEventListener('dragleave', handleDragLeave);
+    // Touch events for mobile
+    dragHandle.addEventListener('touchstart', handleTouchStart, { passive: false });
+    dragHandle.addEventListener('touchmove', handleTouchMove, { passive: false });
+    dragHandle.addEventListener('touchend', handleTouchEnd);
+    
+    // Mouse events for desktop
+    dragHandle.addEventListener('mousedown', handleMouseStart);
 }
 
-let draggedElement = null;
-
-function handleDragStart(e) {
-    draggedElement = this;
-    this.style.opacity = '0.4';
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', this.innerHTML);
+function handleTouchStart(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    startDrag(this.closest('.task-item'), touch.clientY);
 }
 
-function handleDragEnd(e) {
-    this.style.opacity = '1';
-    document.querySelectorAll('.task-item').forEach(item => {
-        item.classList.remove('drag-over');
-    });
+function handleMouseStart(e) {
+    e.preventDefault();
+    startDrag(this.closest('.task-item'), e.clientY);
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseEnd);
 }
 
-function handleDragOver(e) {
-    if (e.preventDefault) {
-        e.preventDefault();
-    }
-    e.dataTransfer.dropEffect = 'move';
-    return false;
+function startDrag(listItem, clientY) {
+    if (listItem.classList.contains('hidden-task')) return;
+    
+    touchDragState.isDragging = true;
+    touchDragState.draggedElement = listItem;
+    touchDragState.category = listItem.dataset.category;
+    touchDragState.startY = clientY;
+    
+    // Calculate offset from top of element
+    const rect = listItem.getBoundingClientRect();
+    touchDragState.offsetY = clientY - rect.top;
+    
+    // Create placeholder
+    touchDragState.placeholder = document.createElement('div');
+    touchDragState.placeholder.classList.add('drag-placeholder');
+    touchDragState.placeholder.style.height = rect.height + 'px';
+    
+    // Create floating clone
+    touchDragState.clone = listItem.cloneNode(true);
+    touchDragState.clone.classList.add('drag-clone');
+    touchDragState.clone.style.width = rect.width + 'px';
+    touchDragState.clone.style.height = rect.height + 'px';
+    touchDragState.clone.style.position = 'fixed';
+    touchDragState.clone.style.left = rect.left + 'px';
+    touchDragState.clone.style.top = rect.top + 'px';
+    touchDragState.clone.style.zIndex = '9999';
+    touchDragState.clone.style.pointerEvents = 'none';
+    
+    document.body.appendChild(touchDragState.clone);
+    listItem.parentNode.insertBefore(touchDragState.placeholder, listItem);
+    listItem.style.display = 'none';
+    
+    // Add dragging class to container
+    const container = listItem.closest('.section-content ul');
+    if (container) container.classList.add('is-dragging');
 }
 
-function handleDragEnter(e) {
-    if (!draggedElement) return;
-    if (this !== draggedElement && this.dataset.category === draggedElement.dataset.category) {
-        this.classList.add('drag-over');
-    }
+function handleTouchMove(e) {
+    if (!touchDragState.isDragging) return;
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    updateDragPosition(touch.clientY);
 }
 
-function handleDragLeave(e) {
-    this.classList.remove('drag-over');
+function handleMouseMove(e) {
+    if (!touchDragState.isDragging) return;
+    e.preventDefault();
+    
+    updateDragPosition(e.clientY);
 }
 
-function handleDrop(e) {
-    if (e.stopPropagation) {
-        e.stopPropagation();
+function updateDragPosition(clientY) {
+    touchDragState.currentY = clientY;
+    
+    // Update clone position
+    if (touchDragState.clone) {
+        touchDragState.clone.style.top = (clientY - touchDragState.offsetY) + 'px';
     }
     
-    this.classList.remove('drag-over');
+    // Find drop target
+    const container = touchDragState.draggedElement.closest('.section-content ul');
+    if (!container) return;
     
-    if (!draggedElement) return false;
+    const afterElement = getDragAfterElement(container, clientY);
+    const placeholder = touchDragState.placeholder;
     
-    if (draggedElement !== this && this.dataset.category === draggedElement.dataset.category) {
-        const category = this.dataset.category;
-        const draggedId = draggedElement.dataset.taskId;
-        const targetId = this.dataset.taskId;
+    if (afterElement == null) {
+        container.appendChild(placeholder);
+    } else {
+        container.insertBefore(placeholder, afterElement);
+    }
+    
+    // Auto-scroll if near edges
+    autoScroll(clientY);
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.task-item:not(.drag-clone)')].filter(
+        el => el !== touchDragState.draggedElement && 
+              el.dataset.category === touchDragState.category &&
+              !el.classList.contains('hidden-task')
+    );
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
         
-        // Update task order in data
-        const taskArray = category === 'daily' ? tasks.daily : 
-                         category === 'weekly' ? tasks.weekly : tasks.other;
-        
-        const draggedIndex = taskArray.findIndex(t => t.id === draggedId);
-        const targetIndex = taskArray.findIndex(t => t.id === targetId);
-        
-        if (draggedIndex !== -1 && targetIndex !== -1) {
-            const [movedTask] = taskArray.splice(draggedIndex, 1);
-            taskArray.splice(targetIndex, 0, movedTask);
-            
-            // Save order
-            checklistData.taskOrder[category] = taskArray.map(t => t.id);
-            saveData(false);
-            
-            // Re-render the section
-            const listElement = category === 'daily' ? dailyList :
-                               category === 'weekly' ? weeklyList : otherList;
-            populateSection(listElement, taskArray, checklistData.progress);
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
         }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function autoScroll(clientY) {
+    const scrollThreshold = 100;
+    const scrollSpeed = 10;
+    const windowHeight = window.innerHeight;
+    
+    if (touchDragState.scrollInterval) {
+        clearInterval(touchDragState.scrollInterval);
+        touchDragState.scrollInterval = null;
     }
     
-    return false;
+    if (clientY < scrollThreshold) {
+        touchDragState.scrollInterval = setInterval(() => {
+            window.scrollBy(0, -scrollSpeed);
+            updateDragPosition(touchDragState.currentY);
+        }, 16);
+    } else if (clientY > windowHeight - scrollThreshold) {
+        touchDragState.scrollInterval = setInterval(() => {
+            window.scrollBy(0, scrollSpeed);
+            updateDragPosition(touchDragState.currentY);
+        }, 16);
+    }
+}
+
+function handleTouchEnd(e) {
+    endDrag();
+}
+
+function handleMouseEnd(e) {
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseEnd);
+    endDrag();
+}
+
+function endDrag() {
+    if (!touchDragState.isDragging) return;
+    
+    if (touchDragState.scrollInterval) {
+        clearInterval(touchDragState.scrollInterval);
+    }
+    
+    const draggedElement = touchDragState.draggedElement;
+    const placeholder = touchDragState.placeholder;
+    const container = draggedElement.closest('.section-content ul');
+    
+    // Remove clone
+    if (touchDragState.clone) {
+        touchDragState.clone.remove();
+    }
+    
+    // Show original element and remove placeholder
+    draggedElement.style.display = '';
+    if (placeholder && placeholder.parentNode) {
+        placeholder.parentNode.insertBefore(draggedElement, placeholder);
+        placeholder.remove();
+    }
+    
+    // Remove dragging class
+    if (container) container.classList.remove('is-dragging');
+    
+    // Save new order
+    saveTaskOrder(touchDragState.category);
+    
+    // Reset state
+    touchDragState = {
+        isDragging: false,
+        draggedElement: null,
+        placeholder: null,
+        clone: null,
+        category: null,
+        startY: 0,
+        currentY: 0,
+        offsetY: 0,
+        scrollInterval: null
+    };
+}
+
+function saveTaskOrder(category) {
+    const listElement = category === 'daily' ? dailyList :
+                       category === 'weekly' ? weeklyList : otherList;
+    
+    const taskArray = category === 'daily' ? tasks.daily :
+                     category === 'weekly' ? tasks.weekly : tasks.other;
+    
+    const items = [...listElement.querySelectorAll('.task-item')];
+    const newOrder = items
+        .map(item => item.dataset.taskId)
+        .filter(id => id && id !== 'undefined');
+    
+    // Reorder the task array
+    const orderedTasks = [];
+    newOrder.forEach(id => {
+        const task = taskArray.find(t => t.id === id);
+        if (task) orderedTasks.push(task);
+    });
+    
+    // Add any missing tasks at the end
+    taskArray.forEach(task => {
+        if (!orderedTasks.find(t => t.id === task.id)) {
+            orderedTasks.push(task);
+        }
+    });
+    
+    // Update the original array
+    taskArray.length = 0;
+    orderedTasks.forEach(task => taskArray.push(task));
+    
+    // Save to localStorage
+    checklistData.taskOrder[category] = newOrder;
+    saveData(false);
 }
 
 

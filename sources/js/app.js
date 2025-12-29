@@ -630,6 +630,20 @@ async function showNotification(title, body) {
     }
 }
 
+function createDragHandle() {
+    const dragHandle = document.createElement('div');
+    dragHandle.classList.add('drag-handle');
+    dragHandle.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+    `;
+    dragHandle.setAttribute('aria-label', 'Drag to reorder');
+    return dragHandle;
+}
+
 function createChecklistItem(task, isChecked, isSubtask = false) {
     const listItem = document.createElement('li');
     listItem.classList.add('task-item');
@@ -697,16 +711,7 @@ function createChecklistItem(task, isChecked, isSubtask = false) {
         parentHeaderDiv.setAttribute('aria-controls', `${task.id}-subtasks`);
 
         // Add drag handle for parent tasks
-        const dragHandle = document.createElement('div');
-        dragHandle.classList.add('drag-handle');
-        dragHandle.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-        `;
-        dragHandle.setAttribute('aria-label', 'Drag to reorder');
+        const dragHandle = createDragHandle();
 
         parentHeaderDiv.appendChild(dragHandle);
         parentHeaderDiv.appendChild(checkbox);
@@ -777,16 +782,7 @@ function createChecklistItem(task, isChecked, isSubtask = false) {
          }
         
         // Add drag handle
-        const dragHandle = document.createElement('div');
-        dragHandle.classList.add('drag-handle');
-        dragHandle.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-        `;
-        dragHandle.setAttribute('aria-label', 'Drag to reorder');
+        const dragHandle = createDragHandle();
 
         const label = document.createElement('label');
         label.htmlFor = task.id;
@@ -1281,7 +1277,7 @@ function saveTaskOrder(category) {
     const items = [...listElement.querySelectorAll('.task-item')];
     const newOrder = items
         .map(item => item.dataset.taskId)
-        .filter(id => id && !id.includes('undefined'));
+        .filter(id => id && id !== 'undefined');
     
     // Reorder the task array
     const orderedTasks = [];

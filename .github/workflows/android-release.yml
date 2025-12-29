@@ -80,7 +80,7 @@ jobs:
         run: |
           {
             echo "COMMIT_MESSAGE<<EOF"
-            git log -1 --pretty=%B | head -n 1
+            git log -1 --pretty=%B
             echo "EOF"
           } >> $GITHUB_ENV
           COMMIT_SHA=$(git rev-parse --short HEAD)

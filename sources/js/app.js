@@ -123,6 +123,10 @@ let checklistData = {
 let currentTheme = 'dark';
 let saveStatusTimeout;
 let countdownInterval;
+let notificationIdCounter = 0;
+
+// Constants
+const NOTIFICATION_DELAY_MS = 1000;
 
 // --- Function Definitions ---
 
@@ -604,13 +608,16 @@ async function showNotification(title, body) {
         const hasPermission = await requestNotificationPermission();
         if (!hasPermission) return;
         
+        // Generate unique notification ID using timestamp and counter
+        const notificationId = Date.now() + (notificationIdCounter++);
+        
         await LocalNotifications.schedule({
             notifications: [
                 {
                     title: title,
                     body: body,
-                    id: Math.floor(Math.random() * 100000),
-                    schedule: { at: new Date(Date.now() + 1000) },
+                    id: notificationId,
+                    schedule: { at: new Date(Date.now() + NOTIFICATION_DELAY_MS) },
                     sound: undefined,
                     attachments: undefined,
                     actionTypeId: "",
@@ -1058,7 +1065,8 @@ function handleDragOver(e) {
 }
 
 function handleDragEnter(e) {
-    if (this !== draggedElement && this.dataset.category === draggedElement?.dataset.category) {
+    if (!draggedElement) return;
+    if (this !== draggedElement && this.dataset.category === draggedElement.dataset.category) {
         this.classList.add('drag-over');
     }
 }
@@ -1074,7 +1082,9 @@ function handleDrop(e) {
     
     this.classList.remove('drag-over');
     
-    if (draggedElement !== this && this.dataset.category === draggedElement?.dataset.category) {
+    if (!draggedElement) return false;
+    
+    if (draggedElement !== this && this.dataset.category === draggedElement.dataset.category) {
         const category = this.dataset.category;
         const draggedId = draggedElement.dataset.taskId;
         const targetId = this.dataset.taskId;
